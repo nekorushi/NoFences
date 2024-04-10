@@ -128,9 +128,11 @@
             this.Paint += new System.Windows.Forms.PaintEventHandler(this.FenceWindow_Paint);
             this.DoubleClick += new System.EventHandler(this.FenceWindow_DoubleClick);
             this.MouseClick += new System.Windows.Forms.MouseEventHandler(this.FenceWindow_MouseClick);
+            this.MouseDown += new System.Windows.Forms.MouseEventHandler(this.FenceWindow_Down);
             this.MouseEnter += new System.EventHandler(this.FenceWindow_MouseEnter);
             this.MouseLeave += new System.EventHandler(this.FenceWindow_MouseLeave);
             this.MouseMove += new System.Windows.Forms.MouseEventHandler(this.FenceWindow_MouseMove);
+            this.MouseUp += new System.Windows.Forms.MouseEventHandler(this.FenceWindow_Up);
             this.Resize += new System.EventHandler(this.FenceWindow_Resize);
             this.appContextMenu.ResumeLayout(false);
             this.ResumeLayout(false);

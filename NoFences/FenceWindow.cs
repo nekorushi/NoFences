@@ -20,6 +20,7 @@ namespace NoFences
         private const int textHeight = 35;
         private const int itemPadding = 15;
         private const float shadowDist = 1.5f;
+        private const int mouseClickMaxOffset = 10;
 
         private readonly FenceInfo fenceInfo;
 
@@ -28,6 +29,7 @@ namespace NoFences
 
         private string selectedItem;
         private string hoveringItem;
+        private string draggedItem;
         private bool shouldUpdateSelection;
         private bool shouldRunDoubleClick;
         private bool hasSelectionUpdated;
@@ -37,6 +39,8 @@ namespace NoFences
 
         private int scrollHeight;
         private int scrollOffset;
+
+        private Point mouseDragStartingPosition;
 
         private readonly ThrottledExecution throttledMove = new ThrottledExecution(TimeSpan.FromSeconds(4));
         private readonly ThrottledExecution throttledResize = new ThrottledExecution(TimeSpan.FromSeconds(4));
@@ -111,7 +115,7 @@ namespace NoFences
 
             // Prevent foreground
             if (m.Msg == WM_SETFOCUS)
-            {
+            { 
                 SetWindowPos(Handle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
                 return;
             }
@@ -204,7 +208,18 @@ namespace NoFences
 
         private void FenceWindow_MouseMove(object sender, MouseEventArgs e)
         {
-            Refresh();
+            if (!lockedToolStripMenuItem.Checked)
+            {
+                bool mouseIsDown = e.Button == MouseButtons.Left;
+                bool isDragging = mouseIsDown && Extensions.Distance(mouseDragStartingPosition, PointToClient(MousePosition)) > mouseClickMaxOffset;
+                if (isDragging && hoveringItem != null && draggedItem == null)
+                {
+
+                    draggedItem = hoveringItem;
+                }
+            }
+
+            Refresh(); 
         }
 
         private void FenceWindow_MouseEnter(object sender, EventArgs e)
@@ -246,12 +261,46 @@ namespace NoFences
 
         }
 
-        private void FenceWindow_Click(object sender, EventArgs e)
+        private void FenceWindow_Down(object sender, MouseEventArgs e)
         {
+            if (!lockedToolStripMenuItem.Checked)
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    mouseDragStartingPosition = PointToClient(MousePosition);
+                }
+            }
             shouldUpdateSelection = true;
             Refresh();
         }
 
+        private void FenceWindow_Up(object sender, MouseEventArgs e)
+        {
+
+            if (e.Button == MouseButtons.Left)
+            {
+                if (!lockedToolStripMenuItem.Checked && hoveringItem != null && draggedItem != hoveringItem)
+                {
+                    fenceInfo.Files.Remove(draggedItem);
+                    int hoveringItemIndex = fenceInfo.Files.IndexOf(hoveringItem);
+                    fenceInfo.Files.Insert(hoveringItemIndex, draggedItem);
+                }
+
+                mouseDragStartingPosition = PointToClient(Point.Empty);
+                draggedItem = null;
+            }
+            Refresh();
+        }
+
+        private void FenceWindow_Click(object sender, EventArgs e)
+        {
+            double distanceFromMouseDown = Extensions.Distance(mouseDragStartingPosition, PointToClient(MousePosition));
+            if (distanceFromMouseDown <= mouseClickMaxOffset)
+            {
+                shouldUpdateSelection = true;
+                Refresh();
+            }
+        }
         private void FenceWindow_DoubleClick(object sender, EventArgs e)
         {
             shouldRunDoubleClick = true;
@@ -340,6 +389,8 @@ namespace NoFences
             var mousePos = PointToClient(MousePosition);
             var mouseOver = mousePos.X >= x && mousePos.Y >= y && mousePos.X < x + outlineRect.Width && mousePos.Y < y + outlineRect.Height;
 
+            var isBeingDragged = draggedItem == entry.Path;
+
             if (mouseOver)
             {
                 hoveringItem = entry.Path;
@@ -359,22 +410,41 @@ namespace NoFences
                 entry.Open();
             }
 
-            if (selectedItem == entry.Path)
+            if (draggedItem != null)
             {
-                if (mouseOver)
+                if (isBeingDragged)
                 {
-                    g.DrawRectangle(new Pen(Color.FromArgb(120, SystemColors.ActiveBorder)), outlineRectInner);
-                    g.FillRectangle(new SolidBrush(Color.FromArgb(100, SystemColors.GradientActiveCaption)), outlineRect);
+                    g.DrawRectangle(new Pen(Color.FromArgb(30, SystemColors.ActiveBorder)), outlineRectInner);
+                    g.FillRectangle(new SolidBrush(Color.FromArgb(20, SystemColors.GradientActiveCaption)), outlineRect);
                 }
-                else
+                else if (mouseOver)
                 {
-                    g.DrawRectangle(new Pen(Color.FromArgb(120, SystemColors.ActiveBorder)), outlineRectInner);
-                    g.FillRectangle(new SolidBrush(Color.FromArgb(80, SystemColors.GradientInactiveCaption)), outlineRect);
+                    int markerHeight = itemHeight / 2;
+                    int markerX = x - itemPadding / 2;
+                    int verticalCenter = y + 32;
+                    g.DrawLine(
+                        new Pen(Color.FromArgb(120, SystemColors.ActiveBorder), 1f),
+                        new Point(markerX, verticalCenter - markerHeight / 2),
+                        new Point(markerX, verticalCenter + markerHeight / 2)
+                    );
                 }
             }
-            else
+            else 
             {
-                if (mouseOver)
+                if (selectedItem == entry.Path)
+                {
+                    if (mouseOver)
+                    {
+                        g.DrawRectangle(new Pen(Color.FromArgb(120, SystemColors.ActiveBorder)), outlineRectInner);
+                        g.FillRectangle(new SolidBrush(Color.FromArgb(100, SystemColors.GradientActiveCaption)), outlineRect);
+                    }
+                    else
+                    {
+                        g.DrawRectangle(new Pen(Color.FromArgb(120, SystemColors.ActiveBorder)), outlineRectInner);
+                        g.FillRectangle(new SolidBrush(Color.FromArgb(80, SystemColors.GradientInactiveCaption)), outlineRect);
+                    }
+                }
+                else if (mouseOver)
                 {
                     g.DrawRectangle(new Pen(Color.FromArgb(120, SystemColors.ActiveBorder)), outlineRectInner);
                     g.FillRectangle(new SolidBrush(Color.FromArgb(80, SystemColors.ActiveCaption)), outlineRect);
@@ -382,8 +452,8 @@ namespace NoFences
             }
 
             g.DrawIcon(icon, x + itemWidth / 2 - icon.Width / 2, y);
-            g.DrawString(name, iconFont, new SolidBrush(Color.FromArgb(180, 15, 15, 15)), new RectangleF(textPosition.Move(shadowDist, shadowDist), textMaxSize), stringFormat);
-            g.DrawString(name, iconFont, Brushes.White, new RectangleF(textPosition, textMaxSize), stringFormat);
+            g.DrawString(name, iconFont, new SolidBrush(Color.FromArgb(isBeingDragged ? 50 : 180, 15, 15, 15)), new RectangleF(textPosition.Move(shadowDist, shadowDist), textMaxSize), stringFormat);
+            g.DrawString(name, iconFont, new SolidBrush(Color.FromArgb(isBeingDragged ? 100 : 255, 255, 255, 255)), new RectangleF(textPosition, textMaxSize), stringFormat);
         }
 
         private void renameToolStripMenuItem_Click(object sender, EventArgs e)
@@ -497,6 +567,5 @@ namespace NoFences
             return File.Exists(path) || Directory.Exists(path);
         }
     }
-
 }
 
